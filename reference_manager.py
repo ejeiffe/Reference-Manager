@@ -1,268 +1,385 @@
-import os.path
-import sqlite3
+import sys
+import string
+
+from PyQt5.QtCore import *
+from PyQt5.QtWidgets import *
 
 from create_new_db import *
 from db_controller import *
+from article_dialog_class import *
 
-def main_menu():
-    print()
-    print("Main Menu: ")
-    print()
-    print("1. New article")
-    print("2. Search")
-    print("0. Exit")
-    print()
-
-def search_menu():
-    print()
-    print("Search Menu: ")
-    print()
-    print("1. Show all articles")
-    print("2. Search by Author")
-    print("3. Search by Keyword")
-    print("4. Search by Year")
-    print("0. Return to main menu")
-    print()
-
-def search_results_menu():
-    print()
-    print("Search Results Menu: ")
-    print()
-    print("1. Select article")
-    print("2. Search again")
-    print("0. Return to main menu")
-    print()
-
-def article_menu():
-    print()
-    print("Article Options: ")
-    print()
-    print("1. Edit article")
-    print("2. Open pdf")
-    print("3. Delete article")
-    print("4. Return to search results")
-    print("5. Return to search menu")
-    print("0. Return to main menu")
-    print()
-
-def edit_menu():
-    print()
-    print("Edit Menu: ")
-    print()
-    print("1. Edit Authors")
-    print("2. Edit Title")
-    print("3. Edit Journal")
-    print("4. Edit Year")
-    print("5. Edit Volume")
-    print("6. Edit Issue")
-    print("7. Edit First Page")
-    print("8. Edit Last Page")
-    print("9. Edit File Location")
-    print("10. Edit Keywords")
-    print("11. Edit Notes")
-    print("0. Return to article options")
-    print()
-
-def author_edit_menu():
-    print()
-    print("Edit Authors Menu: ")
-    print()
-    print("1. Add author")
-    print("2. Remove author")
-    print("3. Edit author name")
-    print("4. Change first author")
-    print("0. Return to edit menu")
-    print()
-
-def menu_select(len_menu):
-    valid = False
-    while not valid:
-        try:
-            selection = int(input("Select an option: "))
-            if selection in range(len_menu):
-                valid = True
-            else:
-                print(f"Enter a number between 0 and {str(len_menu-1)}")
-        except:
-            print(f"Enter a number between 0 and {str(len_menu-1)}")
-    return selection
-
-def new_article_inputs():
-    title = input("Title: ")
-
-    authors = []
-    first_author_first = input("First Author:\nFirst name: ").capitalize()
-    first_author_middle = input("Middle initial: ").upper()
-    first_author_last = input("Last name: ").capitalize()
-    authors.append((first_author_first, first_author_middle, first_author_last))
+class RefManWindow(QMainWindow):
+    """Creates main window for reference manager"""
+    def __init__(self):
+        super().__init__()
+        self.controller = DbController("references.db")
+        #create dictionary to hold opened article dialogs (key = article_id)
+        self.article_views = {}
+        self.search_term = None
         
-    add_author = True
+        self.setWindowTitle("Reference Manager")
+        self.resize(300,100)
+        self.create_main_window_layout()
 
-    while add_author:
-        add = input("Add another author? y/n: ")
-        if add.lower() == 'y':
-            author_first = input("First name: ").capitalize()
-            author_middle = input("Middle initial: ").upper()
-            author_last = input("Last name: ").capitalize()
-            authors.append((author_first, author_middle, author_last))
+        self.stacked_layout = QStackedLayout()
+        self.stacked_layout.addWidget(self.main_menu_widget)
+
+        self.central_widget = QWidget()
+        self.central_widget.setLayout(self.stacked_layout)
+        self.setCentralWidget(self.central_widget)
+
+    def create_main_window_layout(self):
+        #inital layout of window showing main menu options
+        self.new_article_button = QPushButton("Add New Article")
+        self.view_all_button = QPushButton("View All Articles")
+        self.search_button = QPushButton("Search Database")
+        self.exit_button = QPushButton("Exit")
+
+        self.main_menu_layout = QVBoxLayout()
+        self.main_menu_layout.addWidget(self.new_article_button)
+        self.main_menu_layout.addWidget(self.view_all_button)
+        self.main_menu_layout.addWidget(self.search_button)
+        self.main_menu_layout.addWidget(self.exit_button)
+        
+        self.main_menu_widget = QWidget()
+        self.main_menu_widget.setLayout(self.main_menu_layout)
+
+        #connections
+        self.new_article_button.clicked.connect(self.new_article_clicked)
+        self.view_all_button.clicked.connect(self.view_all_clicked)
+        self.search_button.clicked.connect(self.search_button_clicked)
+        self.exit_button.clicked.connect(self.close)
+
+    def new_article_clicked(self):
+        self.create_new_article_layout() 
+        self.stacked_layout.addWidget(self.new_article_widget)
+        self.stacked_layout.setCurrentIndex(1)
+
+    def view_all_clicked(self):
+        self.results = self.controller.show_all_articles()
+        if not self.results:
+            no_results_message = QMessageBox()
+            no_results_message.setWindowTitle("No Results")
+            no_results_message.setText("No results found")
         else:
-            add_author = False
+            self.create_results_layout(self.results)
+            self.stacked_layout.addWidget(self.results_widget)
+            self.stacked_layout.setCurrentIndex(1)
 
-    journal = input("Journal: ")
-    year = int(input("Year: "))
-    volume = input("Volume: ")
-    issue = input("Issue: ")
-    first_page = input("First page: ")
-    last_page = input("Last page: ")
-    file_path = input("PDF file location: ")
-    keywords = input("Keywords: ")
-    notes = input("Notes: ")
+    def search_button_clicked(self):
+        self.create_search_layout()
+        self.stacked_layout.addWidget(self.search_widget)
+        self.stacked_layout.setCurrentIndex(1)
 
-    return title, authors, journal, year, volume, issue, first_page, last_page, file_path, keywords, notes
+    def create_new_article_layout(self):
+        self.title_label_new = QLabel("Title:")
+        self.authors_label_new = QLabel("Authors:")
+        self.journal_label_new = QLabel("Journal:")
+        self.year_label_new = QLabel("Year:")
+        self.volume_label_new = QLabel("Volume:")
+        self.issue_label_new = QLabel("Issue:")
+        self.pages_label_new = QLabel("Pages:")
+        self.dash_label_new = QLabel("-")
+        self.filepath_label_new = QLabel("File Location:")
+        self.keywords_label_new = QLabel("Keywords:")
+        self.notes_label_new = QLabel("Notes:")
 
-def author_inputs():
-    author_first = input("First name: ")
-    author_middle = input("Middle initial: ")
-    author_last = input("Last name: ")
+        self.title_line_edit_new = QLineEdit()
+        self.title_line_edit_new.setFixedWidth(500)
+        self.authors_text_edit_new = QTextEdit()
+        self.authors_text_edit_new.setToolTip("Enter each author on a new line")
+        self.journal_line_edit_new = QLineEdit()
+        self.year_spin_box_new = QSpinBox()
+        self.year_spin_box_new.setRange(0,9999)
+        self.year_spin_box_new.setValue(2018)
+        self.year_spin_box_new.setFixedWidth(80)
+        self.volume_line_edit_new = QLineEdit()
+        self.issue_line_edit_new = QLineEdit()
+        self.first_page_line_edit_new = QLineEdit()
+        self.last_page_line_edit_new = QLineEdit()
+        self.filepath_line_edit_new = QLineEdit()
+        self.filepath_line_edit_new.setToolTip("Include file extension (.pdf, .doc)")
+        self.keywords_line_edit_new = QLineEdit()
+        self.notes_line_edit_new = QLineEdit()
+       
+        self.submit_button_new = QPushButton("Submit")
+        self.submit_button_new.setToolTip("Add article to database")
+        self.return_button_new = QPushButton("Return to Main Menu")
+        self.return_button_new.setToolTip("Article will not be saved")
 
-    return author_first, author_middle, author_last
+        self.vol_iss_pages_layout = QHBoxLayout()
+        self.vol_iss_pages_layout.addWidget(self.volume_line_edit_new)
+        self.vol_iss_pages_layout.addWidget(self.issue_label_new)
+        self.vol_iss_pages_layout.addWidget(self.issue_line_edit_new)
+        self.vol_iss_pages_layout.addWidget(self.pages_label_new)
+        self.vol_iss_pages_layout.addWidget(self.first_page_line_edit_new)
+        self.vol_iss_pages_layout.addWidget(self.dash_label_new)
+        self.vol_iss_pages_layout.addWidget(self.last_page_line_edit_new)
 
+        self.article_grid_layout = QGridLayout()
+        self.article_grid_layout.addWidget(self.title_label_new,0,0)
+        self.article_grid_layout.addWidget(self.authors_label_new,1,0)
+        self.article_grid_layout.addWidget(self.journal_label_new,2,0)
+        self.article_grid_layout.addWidget(self.year_label_new,3,0)
+        self.article_grid_layout.addWidget(self.volume_label_new,4,0)
+        self.article_grid_layout.addWidget(self.filepath_label_new,5,0)
+        self.article_grid_layout.addWidget(self.keywords_label_new,6,0)
+        self.article_grid_layout.addWidget(self.notes_label_new,7,0)
+        self.article_grid_layout.addWidget(self.title_line_edit_new,0,1)
+        self.article_grid_layout.addWidget(self.authors_text_edit_new,1,1)
+        self.article_grid_layout.addWidget(self.journal_line_edit_new,2,1)
+        self.article_grid_layout.addWidget(self.year_spin_box_new,3,1)
+        self.article_grid_layout.addLayout(self.vol_iss_pages_layout,4,1)
+        self.article_grid_layout.addWidget(self.filepath_line_edit_new,5,1)
+        self.article_grid_layout.addWidget(self.keywords_line_edit_new,6,1)
+        self.article_grid_layout.addWidget(self.notes_line_edit_new,7,1)
+
+        self.buttons_layout_new = QHBoxLayout()
+        self.buttons_layout_new.addWidget(self.submit_button_new)
+        self.buttons_layout_new.addWidget(self.return_button_new)
+
+        self.new_article_layout = QVBoxLayout()
+        self.new_article_layout.addLayout(self.article_grid_layout)
+        self.new_article_layout.addLayout(self.buttons_layout_new)
+
+        self.new_article_widget = QWidget()
+        self.new_article_widget.setLayout(self.new_article_layout)
+        self.new_article_widget.setAttribute(Qt.WA_DeleteOnClose, on=True)
+
+        self.submit_button_new.clicked.connect(self.new_article_submit)
+        self.return_button_new.clicked.connect(self.return_to_main_clicked)
+
+    def new_article_values(self):
+        #convert author names to correct format for database entry
+        authors = []
+        for author in self.authors_text_edit_new.toPlainText().split('\n'):
+            author = author.split()
+            if author[0][-1] == ',':
+                if len(author) >= 3:
+                    middle = " ".join(author[2:])
+                    middle = "".join(char for char in middle if char not in string.punctuation)
+                elif len(author) == 2:
+                    middle = ""
+                first = author[1]
+                last = author[0][:-1]
+            else:
+                if len(author) >= 3:
+                    middle = " ".join(author[1:-1])
+                    middle = "".join(char for char in middle if char not in string.punctuation)
+                elif len(author) == 2:
+                    middle = ""
+                first = author[0]
+                last = author[-1]
+            authors.append((first, middle, last))
+        #return all values as tuple
+        return self.title_line_edit_new.text(), authors, \
+        self.journal_line_edit_new.text(), self.year_spin_box_new.value(), \
+        self.volume_line_edit_new.text(), self.issue_line_edit_new.text(), \
+        self.first_page_line_edit_new.text(), self.last_page_line_edit_new.text(), \
+        self.filepath_line_edit_new.text(), self.keywords_line_edit_new.text(), \
+        self.notes_line_edit_new.text()
+
+    def new_article_clear(self):
+        self.title_line_edit_new.clear()
+        self.authors_text_edit_new.clear()
+        self.journal_line_edit_new.clear()
+        self.year_spin_box_new.setValue(2018)
+        self.volume_line_edit_new.clear()
+        self.issue_line_edit_new.clear()
+        self.first_page_line_edit_new.clear()
+        self.last_page_line_edit_new.clear()
+        self.filepath_line_edit_new.clear()
+        self.keywords_line_edit_new.clear()
+        self.notes_line_edit_new.clear()
+
+    def new_article_submit(self):
+        article_inputs = self.new_article_values()
+        self.controller.new_article(*article_inputs)
+        self.new_article_clear()
+
+    def return_to_main_clicked(self):
+        current_window = self.stacked_layout.currentWidget()
+        self.stacked_layout.removeWidget(current_window)
+        self.resize(300,100)
+        current_window.close()
+
+    def create_results_layout(self, results):
+        self.first_author_heading = QLabel("<b>First Author\t</b>")
+        self.year_heading = QLabel("<b>Year</b>")
+        self.year_heading.setFixedWidth(70)
+        self.journal_heading = QLabel("<b>Journal</b>")
+        self.journal_heading.setFixedWidth(200)
+        self.title_heading = QLabel("<b>Title</b>")
+        self.title_heading.setFixedWidth(300)
+
+        self.search_button_results = QPushButton("Search")
+        self.return_to_main_results = QPushButton("Return to Main Menu")
+
+        self.search_results_grid = QGridLayout()
+        self.search_results_grid.addWidget(self.first_author_heading,0,0)
+        self.search_results_grid.addWidget(self.year_heading,0,1)
+        self.search_results_grid.addWidget(self.journal_heading,0,2)
+        self.search_results_grid.addWidget(self.title_heading,0,3)
+
+        #generating labels and button for each article found by search
+        #creating dictionary to store article _id (key) with each view button (value)
+        self.view_buttons = {}
+        row = 1
+
+        for entry in results:
+            self.view_buttons[entry[0]] = QPushButton("View")
+            self.search_results_grid.addWidget(QLabel(entry[1]),row,0)
+            self.search_results_grid.addWidget(QLabel(str(entry[2])),row,1)
+            self.search_results_grid.addWidget(QLabel(entry[3], wordWrap=True),row,2)
+            self.search_results_grid.addWidget(QLabel(entry[4], wordWrap=True, minimumHeight=30),row,3)
+            self.search_results_grid.addWidget(self.view_buttons[entry[0]],row,4)
+
+            row += 1
+
+        self.results_button_layout = QHBoxLayout()
+        self.results_button_layout.addWidget(self.search_button_results)
+        self.results_button_layout.addWidget(self.return_to_main_results)
+
+        self.results_layout = QVBoxLayout()
+        self.results_layout.addLayout(self.search_results_grid)
+        self.results_layout.addLayout(self.results_button_layout)
+
+        self.results_widget = QWidget()
+        self.results_widget.setLayout(self.results_layout)
+        self.results_widget.setAttribute(Qt.WA_DeleteOnClose, on=True)
+
+        for article_id in self.view_buttons:
+            self.view_buttons[article_id].clicked.connect(lambda _, a_id=article_id: self.view_button_clicked(article_id =a_id))
+
+        self.search_button_results.clicked.connect(self.search_from_results)
+        self.return_to_main_results.clicked.connect(self.return_to_main_clicked) 
+
+    def view_button_clicked(self, article_id):
+        try:
+            self.article_views[article_id] = ArticleDialog(article_id)
+            self.article_views[article_id].show()
+        except:
+            no_article_message = QMessageBox()
+            no_article_message.setWindowTitle("Article Not Found")
+            no_article_message.setText("Article not found. Please search again or return to the main menu.")
+            no_article_message.exec_()
+
+
+    def update_results(self):
+        current_window = self.stacked_layout.currentWidget()
+        self.stacked_layout.removeWidget(current_window)
+        current_window.close() 
+        self.create_results_layout(self.results)
+        self.stacked_layout.addWidget(self.results_widget)
+        self.stacked_layout.setCurrentIndex(1)
+        
+    def search_from_results(self):
+        current_window = self.stacked_layout.currentWidget()
+        self.stacked_layout.removeWidget(current_window)
+        current_window.close()
+        self.search_button_clicked()
+        self.resize(300,100) 
+
+    def create_search_layout(self):
+        self.search_label = QLabel("Search by:")
+        self.search_info_label = QLabel("Enter author surname")
+        self.search_info_label.setWordWrap(True)
+        self.search_info_label.setFixedHeight(60)
+
+        self.search_line_edit = QLineEdit()
+
+        self.search_run_button = QPushButton("Search")
+        self.return_button_search = QPushButton("Return to Main Menu")
+
+        self.search_dropdown = QComboBox()
+        self.search_dropdown.addItem("Author")
+        self.search_dropdown.addItem("Year")
+        self.search_dropdown.addItem("Keyword")
+
+        self.search_top_layout = QHBoxLayout()
+        self.search_top_layout.addWidget(self.search_label)
+        self.search_top_layout.addWidget(self.search_dropdown)
+
+        self.search_button_layout = QHBoxLayout()
+        self.search_button_layout.addWidget(self.search_run_button)
+        self.search_button_layout.addWidget(self.return_button_search)
+
+        self.search_layout = QVBoxLayout()
+        self.search_layout.addLayout(self.search_top_layout)
+        self.search_layout.addWidget(self.search_info_label)
+        self.search_layout.addWidget(self.search_line_edit)
+        self.search_layout.addLayout(self.search_button_layout)
+
+        self.search_widget = QWidget()
+        self.search_widget.setLayout(self.search_layout)
+        self.search_widget.setAttribute(Qt.WA_DeleteOnClose, on=True)
+
+        self.search_dropdown.activated[str].connect(self.search_input)
+
+        self.search_run_button.clicked.connect(self.run_search)
+        self.return_button_search.clicked.connect(self.return_to_main_clicked)
+
+    def search_input(self, text):
+        if text == "Year":
+            self.search_info_label.setText("Enter a single year or use '-' to search over a range: e.g. 2000-2016, 2000- or -2016")
+        elif text == "Author":
+            self.search_info_label.setText("Enter author surname:")
+        elif text == "Keyword":
+            self.search_info_label.setText("Enter keyword (searches Title, Journal, Keywords and Notes): ")
+
+    def run_search(self):
+        search_term = self.search_line_edit.text()
+        if self.search_dropdown.currentText() == "Author":
+            self.results = self.controller.search_by_author(search_term.capitalize())
+        elif self.search_dropdown.currentText() == "Year":
+            if "-" in search_term:
+                if search_term[0] == "-":
+                    from_year = None
+                    to_year = search_term.split("-")[1].strip()
+                elif search_term[-1] == "-":
+                    from_year = search_term.split("-")[0].strip()
+                    to_year = None
+                else:
+                    from_year = search_term.split("-")[0]
+                    to_year = search_term.split("-")[1]                
+            else:
+                from_year = search_term
+                to_year = search_term
+            try:
+                if not to_year:
+                    from_year = int(from_year)
+                elif not from_year:
+                    to_year = int(to_year)
+                else:
+                    from_year = int(from_year)
+                    to_year = int(to_year)
+            except:
+                year_error_message = QMessageBox()
+                year_error_message.setWindowTitle("Error")
+                year_error_message.setText("Please enter each year as a four digit number")
+                year_error_message.exec_()
+                return False
+            self.results = self.controller.search_by_year(from_year, to_year)
+        elif self.search_dropdown.currentText() == "Keyword":
+            self.results = self.controller.search_by_keyword(search_term)
+        if not self.results:
+            no_results_message = QMessageBox()
+            no_results_message.setText("No results found")
+            no_results_message.exec_()
+        else:
+            self.update_results()
+
+      
 if __name__ == "__main__":
-    #creates new database if not found in folder
+    reference_manager = QApplication(sys.argv)
+    main_window = RefManWindow()
+    main_window.show()
+    main_window.raise_()
+    #creates new database when run for the first time
     if not os.path.exists("references.db"):
         create_new_db("references.db")
-        print("New database created")
-    controller = DbController("references.db")
-    db_open = True
-    while db_open:
-        main_menu()
-        main_select = menu_select(3)
-        if main_select == 1:
-            #Creates new article entry based on user inputs
-            inputs = new_article_inputs()
-            controller.new_article(*inputs)
-        elif main_select == 2:
-            #Go to search menu
-            searching = True
-            results = False
-            while searching:
-                search_menu()
-                search_select = menu_select(5)
-                if search_select == 1:
-                    if controller.show_all_articles():
-                        results = True
-                elif search_select == 2:
-                    name = input("Enter author surname: ").capitalize()
-                    if controller.search_by_author(name):
-                        results = True
-                elif search_select == 3:
-                    term = input("Enter keyword: ")
-                    if controller.search_by_keyword(term):
-                        results = True
-                elif search_select == 4:
-                    year_from = int(input("Search from year: "))
-                    year_to = int(input("Search to year: "))
-                    if controller.search_by_year(year_from, year_to):
-                        results = True
-                elif search_select == 0:
-                    searching = False
-                #If results found, go to search results menu
-                while results:
-                    search_results_menu()
-                    results_select = menu_select(3)
-                
-                    if results_select == 1:
-                        article_id = int(input("Enter Article ID to display: "))
-                        controller.display_article(article_id)
-                        article_options = True
-                        #Go to article options menu
-                        while article_options:
-                            article_menu()
-                            article_select = menu_select(6)
-                            if article_select == 1:
-                                edit = True
-                                #Go to edit menu
-                                while edit:
-                                    edit_menu()
-                                    edit_select = menu_select(12)
-                                    if edit_select == 0:
-                                        edit = False
-                                    elif edit_select == 1:
-                                        #Go to edit authors menu
-                                        controller.get_article_authors(article_id)
-                                        author_edit_menu()
-                                        author_select = menu_select(5)
-                                        if author_select == 1:
-                                            #Add new author
-                                            author_name = author_inputs()
-                                            controller.add_author(article_id, author_name, 0)
-                                        elif author_select == 2:
-                                            #Remove author
-                                            author_id = int(input("Enter ID of author to remove: "))
-                                            controller.remove_author(article_id, author_id)
-                                        elif author_select == 3:
-                                            #Edit author details
-                                            author_id = int(input("Enter ID of author to edit: "))
-                                            new_first = input("Enter new first name or press enter to continue: ")
-                                            if new_first != "":
-                                                controller.edit_author(author_id, "FirstName", new_first)
-                                            new_middle = input("Enter new middle initial or press enter to continue: ")
-                                            if new_middle != "":
-                                                controller.edit_author(author_id, "MiddleInitial", new_middle)
-                                            new_last = input("Enter new last name or press enter to continue: ")
-                                            if new_last != "":
-                                                controller.edit_author(author_id, "LastName", new_first)
-                                        elif author_select == 4:
-                                            #Change first author
-                                            new_first_id = input("Enter ID of new first author: ")
-                                            controller.change_first_author(new_first_id, article_id)
-                                        elif author_select == 0:
-                                            continue
-                                            #Return to edit menu
-                                    else:
-                                        fields = ("Title", "Journal", "Year", "Volume", "Issue", "FirstPage", "LastPage", "FilePath", "Keywords", "Notes")
-                                        field = fields[edit_select-2]
-                                        new_text = input(f"Enter new {field}: ")
-                                        if field == "Year":
-                                            new_text = int(new_text)
-                                        controller.edit_article(article_id, field, new_text)                               
-                            elif article_select == 2:
-                                #Get pdf file path from db and open file with default program
-                                path = controller.get_path(article_id)
-                                if path == "":
-                                    print("No file location entered")
-                                else:
-                                    try:
-                                        os.startfile(path)
-                                    except:
-                                        print("File not found. Check file path.")
-                            elif article_select == 3:
-                                #Delete article
-                                del_choice = input("Are you sure? y/n: ")
-                                if del_choice.lower() == "y":
-                                    controller.delete_article(article_id)
-                                    print("Article deleted.")
-                                    article_options = False
-                                    results = False
-                                    searching = False
-                                else:
-                                    print("Article not deleted. Returning to article options.")
-                            elif article_select in (4,5,0):
-                                article_options = False
-                                #Return to search results menu
-                                if article_select in (5,0):
-                                    results = False
-                                    #Return to search menu
-                                    if article_select == 0:
-                                        searching = False
-                                        #Return to main menu
-                    elif results_select in (2,0):
-                        results = False
-                        #Return to search menu
-                        if results_select == 0:
-                            searching = False
-                            #Return to main menu
-
-        elif main_select == 0:
-            db_open = False
-            #Exit
+        new_db = QMessageBox()
+        new_db.setWindowTitle("New Database")
+        new_db.setText("New database created")
+        new_db.exec_()
+    reference_manager.exec_()

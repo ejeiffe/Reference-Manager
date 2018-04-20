@@ -7,17 +7,17 @@ def create_new_db(db_name):
         cursor = db.cursor()
 
         #create author_article table
-        cursor.execute("""create table ArticleAuthor(
+        cursor.execute("""CREATE TABLE ArticleAuthor(
             ArticleAuthorID integer,
             ArticleID integer,
             AuthorID integer,
-            FirstAuthor integer,
-            primary key(ArticleAuthorID),
-            foreign key(ArticleID) references Article(ArticleID),
-            foreign key(AuthorID) references Author(AuthorID));""")
+            Position integer,
+            PRIMARY KEY(ArticleAuthorID),
+            FOREIGN KEY(ArticleID) REFERENCES Article(ArticleID),
+            FOREIGN KEY(AuthorID) REFERENCES Author(AuthorID));""")
 
         #create article table
-        cursor.execute("""create table Article(
+        cursor.execute("""CREATE TABLE Article(
             ArticleID integer,
             Title text,
             JournalID integer,
@@ -29,24 +29,24 @@ def create_new_db(db_name):
             FilePath text,
             Keywords text,
             Notes text,
-            primary key(ArticleID),
-            foreign key(JournalID) references Journal(JournalID));""")
+            PRIMARY KEY(ArticleID),
+            FOREIGN KEY(JournalID) REFERENCES Journal(JournalID));""")
 
 
         #create author table
-        cursor.execute("""create table Author(
+        cursor.execute("""CREATE TABLE Author(
             AuthorID integer,
             FirstName text,
             MiddleInitial text,
             LastName text,
-            primary key(AuthorID));""")
+            PRIMARY KEY(AuthorID));""")
 
 
         #create journal table
-        cursor.execute("""create table Journal(
+        cursor.execute("""CREATE TABLE Journal(
             JournalID integer,
             JournalName text,
-            primary key(JournalID));""")
+            PRIMARY KEY(JournalID));""")
 
         db.commit()
 
